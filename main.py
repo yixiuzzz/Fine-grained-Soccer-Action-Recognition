@@ -62,9 +62,7 @@ def set_environment(args):
     print(f'    [test] sample: {len(test_set)} , batch: ({len(test_loader)})')
     print()
 
-
     # create model 
-    # X3D
     model = X3D(num_classes=args.num_classes, 
                 model_size=args.model_size, 
                 torch_pretrained=args.torch_pretrained)
@@ -86,7 +84,6 @@ def set_environment(args):
 
 
 
-
 def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
     model.train()
 
@@ -102,29 +99,6 @@ def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
 
         # forward 
         data, label = data.to(args.device), label.to(args.device)
-
-        # if (epoch % 10 == 0) and it == 0:
-        #     visualized(data, epoch, args, device=args.device)
-
-        # b, c, t, h, w = data.shape
-        # select_length = 8
-        
-        # selected_samples = []
-        # selected_indices_log = []  
-
-        # for i in range(b):
-        #     frame_indices = sorted(random.sample(range(t), select_length))  
-        #     selected_indices_log.append(frame_indices)  
-        #     selected_sample = data[i, :, frame_indices, :, :]  
-        #     selected_samples.append(selected_sample)
-
-        # selected_frames = torch.stack(selected_samples, dim=0)  # [B, C, 8, H, W]
-
-        # print(f"Epoch {epoch}, Iter {it}:")
-        # for a in range(b):
-        #     print(f" Sample {a}: Selected frames {selected_indices_log[a]}")
-
-
         out = model(data) # [batch_size, num_classes]
 
         # calculate loss
@@ -217,6 +191,8 @@ def eval(args, epoch, model, test_loader):
     
     plt.savefig(f'{args.save_dir}/conf_mat/ep{epoch}.jpg')
 
+    plt.close('all')
+
     return test_acc
 
 
@@ -251,5 +227,6 @@ def main():
             best_acc = record_best_model(test_acc, best_acc, ckpt, args, epoch)
 
 
+    
 if __name__ == "__main__":
     main()
