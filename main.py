@@ -83,7 +83,6 @@ def set_environment(args):
     return model, optimizer, train_loader, test_loader, lr_schedule
 
 
-
 def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
     model.train()
 
@@ -134,7 +133,6 @@ def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
         pbar.update(label.size(0))
 
     pbar.close()
-
 
 
 @torch.no_grad()
@@ -196,7 +194,6 @@ def eval(args, epoch, model, test_loader):
     return test_acc
 
 
-
 def record_best_model(test_acc, best_acc, ckpt, args, epoch):
     if test_acc >= best_acc:
         best_acc = test_acc
@@ -207,7 +204,6 @@ def record_best_model(test_acc, best_acc, ckpt, args, epoch):
             wandb.run.summary["best_epoch"] = epoch
             
     return max(test_acc, best_acc)
-
 
 
 def main():
@@ -227,6 +223,5 @@ def main():
             best_acc = record_best_model(test_acc, best_acc, ckpt, args, epoch)
 
 
-    
 if __name__ == "__main__":
     main()
