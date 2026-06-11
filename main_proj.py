@@ -62,8 +62,6 @@ def set_environment(args):
     print(f'    [test] sample: {len(test_set)} , batch: ({len(test_loader)})')
     print()
 
-
-    # create model 
     # X3D
     model = X3D(num_classes=args.num_classes, 
                 model_size=args.model_size, 
@@ -85,89 +83,26 @@ def set_environment(args):
     return model, optimizer, train_loader, test_loader, lr_schedule
 
 
-def compute_cosine_similarity(features):
-    """
-    计算 batch 内所有样本的 Cosine 相似度矩阵
-    :param features: (B, C) 归一化后的特征
-    :return: (B, B) 相似度矩阵
-    """
-    similarity_matrix = torch.matmul(features, features.T)  # (B, B)
-    return similarity_matrix
-
-def compute_relation_matrix(labels, num_classes):
-    """
-    计算 batch 内样本的关系矩阵 (Ground Truth)
-    :param labels: (B,) 样本类别
-    :param num_classes: 总类别数
-    :return: (B, B) 关系矩阵
-    """
-    B = labels.size(0)
-    one_hot_labels = F.one_hot(labels, num_classes).float()  # (B, N)
-    relation_matrix = torch.matmul(one_hot_labels, one_hot_labels.T)  # (B, B)
-    return relation_matrix
-
-def consistency_loss(similarity_matrix, relation_matrix, temperature=0.5):
-    """
-    计算一致性损失 (Consistency Loss)
-    :param similarity_matrix: (B, B) Cosine 相似度矩阵
-    :param relation_matrix: (B, B) 关系矩阵 (1=同类, 0=不同类)
-    :param temperature: 控制 softmax 范围
-    :return: consistency loss
-    """
-    logits = similarity_matrix / temperature  # 调整温度系数
-    loss = F.cross_entropy(logits, relation_matrix.float())  # 计算交叉熵损失
-    return loss
-
-
-def temporal_masking_fixed_T(data, min_keep=8, max_keep=16):
-    B, C, T, H, W = data.shape
-    assert T == 16, "This function assumes T=16 as input."
-
-    masked_data = data.clone()  
-    mask = torch.ones((B, 1, T, 1, 1), device=data.device) 
-
-    for i in range(B):  
-        keep_length = random.randint(min_keep, max_keep) # 8~16
-        start_idx = random.randint(0, T - keep_length)
-        masked_indices = list(range(start_idx)) + list(range(start_idx + keep_length, T))
-
-        masked_data[i, :, masked_indices, :, :] = 0  
-        mask[i, :, masked_indices, :, :] = 0  
-
-    return masked_data, mask
-
 def split_temporal_segments(data):
-    """
-    隨機取兩個 clip，長度在 [8,16] 之間，並用 Padding 填充到 T=16。
-    Clip 皆從 0 開始，不重疊。
-    
-    :param data: [B, C, T, H, W]，T 固定為 16
-    :return: (clip1, clip2, mask1, mask2)
-    """
     B, C, T, H, W = data.shape
     assert T == 16, "This function assumes T=16 as input."
 
-    # 初始化 clip 和 mask
-    clip1 = torch.zeros_like(data)  # [B, C, T, H, W]，填充 0
+    clip1 = torch.zeros_like(data)  
     clip2 = torch.zeros_like(data)  
-    mask1 = torch.zeros((B, 1, T, 1, 1), device=data.device)  # Mask 初始化
+    mask1 = torch.zeros((B, 1, T, 1, 1), device=data.device) 
     mask2 = torch.zeros((B, 1, T, 1, 1), device=data.device)  
 
     for i in range(B):
-        # 隨機決定 L1 和 L2，範圍 8~16
         L1 = random.randint(8, 16)
         L2 = random.randint(8, 16)
 
-        # 取 L1 和 L2 的片段，從索引 0 開始
         clip1[i, :, :L1, :, :] = data[i, :, :L1, :, :]
         clip2[i, :, :L2, :, :] = data[i, :, :L2, :, :]
 
-        # 產生 Mask（有效部分 = 1，Padding = 0）
         mask1[i, :, :L1, :, :] = 1
         mask2[i, :, :L2, :, :] = 1
 
     return clip1, clip2, mask1, mask2
-
 
 
 def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
@@ -185,43 +120,19 @@ def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
 
         # forward 
         data, label = data.to(args.device), label.to(args.device)
-
-        # data, mask = temporal_masking_fixed_T(data)
-
-        # if (epoch % 10 == 0) and it == 0:
-        #     visualized(data, epoch, args, device=args.device)
-        # exit()
-
-        # logits, features = model(data, mask) # [batch_size, num_classes]
-
-
         clip1, clip2, mask1, mask2 = split_temporal_segments(data)
 
-        # **模型 Forward**
-        logits1, features1 = model(clip1, mask1)  # 第一段影片
-        logits2, features2 = model(clip2, mask2)  # 第二段影片
-
+        logits1, features1 = model(clip1, mask1)  
+        logits2, features2 = model(clip2, mask2) 
 
         # calculate loss
         onehot_label = nn.functional.one_hot(label, num_classes=args.num_classes)
         onehot_label = onehot_label.float()
-        # class_loss = criterion(logits, onehot_label)
 
         class_loss1 = criterion(logits1, onehot_label)
         class_loss2 = criterion(logits2, onehot_label)
-        class_loss = 0.5 * (class_loss1 + class_loss2)  # 兩段影片的分類 Loss 平均
+        class_loss = 0.5 * (class_loss1 + class_loss2)  
 
-        # mask
-        # mask_weight = mask.squeeze(1).squeeze(-1).squeeze(-1).mean(dim=1)  # [B]
-        # class_loss = (class_loss * mask_weight).mean()  
-
-        # consistency loss
-        # similarity_matrix = compute_cosine_similarity(features)
-        # relation_matrix = compute_relation_matrix(label, args.num_classes)
-        # con_loss = consistency_loss(similarity_matrix, relation_matrix)
-
-        # total loss
-        # loss = class_loss + 0.5 * con_loss
         loss = class_loss
 
         # backward
@@ -251,7 +162,6 @@ def train(epoch, args,  model, optimizer, train_loader, lr_schedule):
         pbar.update(label.size(0))
 
     pbar.close()
-
 
 
 @torch.no_grad()
@@ -308,8 +218,9 @@ def eval(args, epoch, model, test_loader):
     
     plt.savefig(f'{args.save_dir}/conf_mat/ep{epoch}.jpg')
 
-    return test_acc
+    plt.close('all')
 
+    return test_acc
 
 
 def record_best_model(test_acc, best_acc, ckpt, args, epoch):
@@ -322,7 +233,6 @@ def record_best_model(test_acc, best_acc, ckpt, args, epoch):
             wandb.run.summary["best_epoch"] = epoch
             
     return max(test_acc, best_acc)
-
 
 
 def main():
