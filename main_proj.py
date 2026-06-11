@@ -183,7 +183,8 @@ def eval(args, epoch, model, test_loader):
 
         loss = F.cross_entropy(logits, label)
         test_loss += loss * (label.size(0) / total) # get avg results
-        pred = torch.max(logits, dim=1)[1]
+        logits_avg = 0.5 * (logits1 + logits2)
+        pred = torch.max(logits_avg, dim=1)[1]
         
         c = (pred == label).float().sum().cpu().item()
         corrects += c
